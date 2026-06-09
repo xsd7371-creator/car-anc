@@ -266,7 +266,7 @@ function renderBands(bands) {
 function renderEQ(gains) {
   eqContainer.innerHTML = '';
   const max = 8;
-  const threshold = -65;
+  const threshold = -80; // must match AdaptiveEQ.NOISE_THRESHOLD_DB
   gains.forEach(({ hz, gain, noiseDB }) => {
     const col = document.createElement('div');
     col.className = 'eq-col';
