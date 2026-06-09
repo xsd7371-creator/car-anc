@@ -7,9 +7,9 @@ export class AdaptiveEQ {
   static BANDS = [80, 125, 200, 315, 500, 800, 1250, 2000, 3150, 5000];
   static MAX_BOOST_DB = 8;
   // Noise level above which boosting starts.
-  // From debug display: band levels in quiet room are around -70 to -92 dBFS,
-  // so threshold must be below -70 to trigger. Set to -80 for comfortable margin.
-  static NOISE_THRESHOLD_DB = -80;
+  // Observed room+YouTube levels: -79 to -106 dBFS. Set threshold at -93 so
+  // bands 200–500 Hz (typically -79 to -85) get meaningful 4–8 dB boosts.
+  static NOISE_THRESHOLD_DB = -93;
 
   constructor(audioCtx) {
     this.audioCtx = audioCtx;
@@ -80,7 +80,7 @@ export class AdaptiveEQ {
       let targetGain = 0;
       if (bandDB > AdaptiveEQ.NOISE_THRESHOLD_DB) {
         const excess = bandDB - AdaptiveEQ.NOISE_THRESHOLD_DB;
-        targetGain = Math.min(excess * 0.5, AdaptiveEQ.MAX_BOOST_DB);
+        targetGain = Math.min(excess * 1.0, AdaptiveEQ.MAX_BOOST_DB);
       }
 
       this.currentGains[i] = this.smoothing * targetGain + (1 - this.smoothing) * this.currentGains[i];

@@ -3,6 +3,38 @@ import { AudioEngine } from './AudioEngine.js';
 const engine = new AudioEngine();
 let appState = 'idle'; // idle | calibrating | running
 
+// Band stability tracker — prevents noise source list from flickering every 100ms.
+// A band must appear APPEAR_THRESHOLD consecutive frames before showing,
+// and must be absent DISAPPEAR_THRESHOLD frames before hiding.
+const APPEAR_THRESHOLD    = 4;
+const DISAPPEAR_THRESHOLD = 15;
+const bandCounters = {}; // key: band label, value: { streak, visible, data }
+
+function updateStableBands(rawBands) {
+  const seen = new Set(rawBands.map(b => b.label));
+
+  // Increment streak for visible bands, decrement for absent ones
+  for (const key of Object.keys(bandCounters)) {
+    if (seen.has(key)) {
+      bandCounters[key].streak = Math.min(bandCounters[key].streak + 1, APPEAR_THRESHOLD);
+    } else {
+      bandCounters[key].streak = Math.max(bandCounters[key].streak - 1, -DISAPPEAR_THRESHOLD);
+    }
+  }
+  // Add new bands
+  for (const b of rawBands) {
+    if (!bandCounters[b.label]) bandCounters[b.label] = { streak: 1, visible: false, data: b };
+    bandCounters[b.label].data = b; // update freq info
+  }
+  // Decide visibility
+  for (const key of Object.keys(bandCounters)) {
+    const c = bandCounters[key];
+    if (!c.visible && c.streak >= APPEAR_THRESHOLD)       c.visible = true;
+    if ( c.visible && c.streak <= -DISAPPEAR_THRESHOLD)  { c.visible = false; delete bandCounters[key]; }
+  }
+  return Object.values(bandCounters).filter(c => c.visible).map(c => c.data);
+}
+
 // DOM refs
 const startBtn        = document.getElementById('startBtn');
 const calibrateBtn    = document.getElementById('calibrateBtn');
@@ -211,7 +243,7 @@ function renderMetrics({ spectrum, peaks, bands, overallDB, eqGains, calibrated,
   musicBadge.style.display = musicMode ? 'inline' : 'none';
 
   drawSpectrum(spectrum);
-  renderBands(bands);
+  renderBands(updateStableBands(bands));
   renderEQ(eqGains);
 }
 
@@ -266,7 +298,7 @@ function renderBands(bands) {
 function renderEQ(gains) {
   eqContainer.innerHTML = '';
   const max = 8;
-  const threshold = -80; // must match AdaptiveEQ.NOISE_THRESHOLD_DB
+  const threshold = -93; // must match AdaptiveEQ.NOISE_THRESHOLD_DB
   gains.forEach(({ hz, gain, noiseDB }) => {
     const col = document.createElement('div');
     col.className = 'eq-col';
