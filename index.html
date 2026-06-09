@@ -35,9 +35,9 @@
   <div class="card">
     <div class="card-title">自我校正</div>
     <div class="controls">
-      <p class="hint">校正會播放 3 秒測試音，讓系統測量麥克風與喇叭的頻率特性及回聲路徑。<br>
-        請在<strong>安靜環境</strong>下執行（不需要關音樂，但建議先靜音）。</p>
-      <button id="calibrateBtn" class="btn-secondary">開始校正（3 秒）</button>
+      <p class="hint">校正會播放 2 秒 <strong>16–18 kHz 近超聲波</strong>測試音（大多數人幾乎聽不到）。<br>
+        系統藉此測量麥克風、喇叭特性及回聲路徑，請在<strong>安靜環境</strong>下執行。</p>
+      <button id="calibrateBtn" class="btn-secondary">開始校正（約 2 秒，幾乎無聲）</button>
       <div id="calibProgress" style="display:none">
         <div class="progress-bar"><div class="progress-fill" id="calibBar"></div></div>
         <span class="dim" id="calibStatus">量測中…</span>

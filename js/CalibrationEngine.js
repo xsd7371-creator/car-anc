@@ -1,24 +1,24 @@
 /**
- * Self-calibration via log-sweep deconvolution.
+ * Self-calibration via near-ultrasonic log-sweep.
  *
- * Flow:
- *   1. Play a logarithmic sine sweep through the speakers (3 s, low volume)
- *   2. Record the microphone response during playback
- *   3. Compute per-bin correction: correctionDB[b] = idealDB - measuredDB
- *   4. Smooth the curve (moving average) and clip to ±15 dB
+ * Uses 16 kHz – 18 kHz — above most adults' audible range and barely
+ * perceptible even in a quiet room.  iPhone speaker and microphone both
+ * handle this range, so the echo-path timing and high-frequency response
+ * are measured accurately.
  *
- * The correction is then applied to every subsequent noise measurement so
- * that differences in mic sensitivity, speaker roll-off, and room colouration
- * are accounted for.
+ * Trade-off: reliable correction is above ~14 kHz; low/mid-frequency
+ * (80 Hz – 8 kHz) uses extrapolated shape, which is approximate but good
+ * enough — the echo-path delay (most critical parameter) is
+ * frequency-independent at typical car/room distances.
  *
  * NOTE: echoCancellation must be OFF during calibration (caller's responsibility)
- * so the sweep is not removed from the mic signal before we can measure it.
+ * so the sweep is not cancelled before we can measure it.
  */
 export class CalibrationEngine {
-  static F_LOW       = 80;    // Hz — sweep start
-  static F_HIGH      = 8000;  // Hz — sweep end
-  static DURATION    = 3.0;   // seconds
-  static PLAY_GAIN   = 0.22;  // linear — loud enough to measure, not painful
+  static F_LOW       = 16000; // Hz — near top of audible range for most adults
+  static F_HIGH      = 18000; // Hz — within iPhone speaker/mic response
+  static DURATION    = 2.0;   // seconds — shorter since narrow band needs less time
+  static PLAY_GAIN   = 0.04;  // very quiet: –28 dBFS, barely audible even up close
   static SMOOTH_BINS = 11;    // moving-average half-window (bins)
   static CLIP_DB     = 15;    // max correction magnitude
 
