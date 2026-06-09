@@ -1,90 +1,135 @@
-import { FFTAnalyzer } from './FFTAnalyzer.js';
-import { AdaptiveEQ } from './AdaptiveEQ.js';
+import { FFTAnalyzer }          from './FFTAnalyzer.js';
+import { AdaptiveEQ }           from './AdaptiveEQ.js';
 import { MaskingToneGenerator } from './MaskingToneGenerator.js';
+import { CalibrationEngine }    from './CalibrationEngine.js';
 
 /**
- * Central audio engine.
+ * Signal graph
+ * ────────────────────────────────────────────────────────────────────────────
  *
- * Signal graph:
+ *  Microphone ──► micAnalyser (noise analysis tap — NOT routed to output)
  *
- *   Microphone ──► AnalyserNode (noise analysis tap, silent – not routed to output)
+ *  OscillatorBank (masking tones) ─────────────────────────────┐
+ *  AudioFileSource ──► AdaptiveEQ ──► outputAnalyser (ref tap) ─┤
+ *                                                               ▼
+ *                                                        MasterGain ──► destination (BT/AirPlay)
  *
- *   OscillatorBank (masking tones) ──┐
- *   AudioFileSource ─► AdaptiveEQ ──►┼──► MasterGain ──► AudioContext.destination
- *                                    │                      (→ Bluetooth)
- *   MaskingToneGenerator.output ─────┘
+ * Echo-cancellation strategy
+ * ──────────────────────────
+ *  • During calibration : echoCancellation = OFF  (need raw mic to measure sweep)
+ *  • Normal / music mode: echoCancellation = ON   (iOS/browser AEC removes speaker bleed)
+ *  • Our own output (masking tones + loaded audio) is also monitored via outputAnalyser.
+ *    The update loop subtracts its power from the mic spectrum before noise estimation,
+ *    catching any residual echo the AEC might miss at low frequencies.
  */
 export class AudioEngine {
   constructor() {
-    this.ctx = null;
-    this.micStream = null;
-    this.analyzer = null;
-    this.eq = null;
-    this.masking = null;
-    this.masterGain = null;
-    this.audioSource = null; // for file playback
+    this.ctx           = null;
+    this.micStream     = null;
+    this.analyzer      = null;   // FFTAnalyzer — mic
+    this.outputAnalyser = null;  // AnalyserNode — our own output (reference for echo subtraction)
+    this.eq            = null;
+    this.masking       = null;
+    this.masterGain    = null;
+    this.audioSource   = null;
+    this.calibration   = null;
 
-    this.isRunning = false;
-    this.adaptiveEQEnabled = true;
-    this.maskingEnabled = true;
+    this.isRunning          = false;
+    this.adaptiveEQEnabled  = true;
+    this.maskingEnabled     = true;
+    this.musicPlaying       = false;   // true when audio file is loaded & playing
 
     this._updateInterval = null;
-    this.onMetricsUpdate = null; // callback(metrics)
+    this.onMetricsUpdate = null;  // callback(metrics)
   }
 
-  async start() {
-    // AudioContext must be created inside a user gesture on iOS Safari
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+  /**
+   * Start the engine.
+   * @param {'normal'|'calibration'} mode
+   *   normal       – AEC ON, ready for regular use
+   *   calibration  – AEC OFF, used during the sweep measurement
+   */
+  async start(mode = 'normal') {
     this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
-
-    // Request microphone (noise analysis only — not routed to output)
-    this.micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false, // keep raw mic for accurate noise measurement
-        noiseSuppression: false,
-        autoGainControl: false,
-      }
-    });
-
-    const micSource = this.ctx.createMediaStreamSource(this.micStream);
-
-    this.analyzer = new FFTAnalyzer(this.ctx, 4096);
-    micSource.connect(this.analyzer.node);
-    // Mic is NOT connected to destination — analysis only
-
-    this.eq = new AdaptiveEQ(this.ctx);
-    this.masking = new MaskingToneGenerator(this.ctx);
-    this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = 1.0;
-
-    this.masking.output.connect(this.masterGain);
-    this.eq.output.connect(this.masterGain);
-    this.masterGain.connect(this.ctx.destination);
-
-    this.isRunning = true;
-    this._startUpdateLoop();
+    await this._startMic(mode === 'calibration');
+    this._buildGraph();
+    this.calibration = new CalibrationEngine(this.ctx, 4096);
+    this.isRunning   = true;
+    if (mode === 'normal') this._startUpdateLoop();
   }
 
   stop() {
     clearInterval(this._updateInterval);
     this.masking?.stopAll();
+    this.audioSource?.stop();
     this.micStream?.getTracks().forEach(t => t.stop());
     this.ctx?.close();
     this.isRunning = false;
   }
 
-  /** Load and play an audio file through the adaptive EQ chain. */
+  // ── Calibration ────────────────────────────────────────────────────────────
+
+  /**
+   * Run self-calibration:
+   *   1. Restart mic with AEC OFF
+   *   2. Play sweep + measure
+   *   3. Restart mic with AEC ON
+   *   4. Resume normal update loop
+   */
+  async calibrate(onProgress) {
+    clearInterval(this._updateInterval);
+
+    // Step 1: restart mic without AEC so we can hear the sweep
+    this.micStream?.getTracks().forEach(t => t.stop());
+    await this._startMic(/* aecOff= */ true);
+    this._reconnectMic();
+
+    onProgress?.({ phase: 'measuring', value: 0 });
+
+    // Step 2: run sweep
+    await this.calibration.run(
+      this.analyzer.node,
+      this.ctx.destination,
+      v => onProgress?.({ phase: 'measuring', value: v })
+    );
+
+    onProgress?.({ phase: 'switching', value: 1 });
+
+    // Step 3: restart mic with AEC ON for normal operation
+    this.micStream?.getTracks().forEach(t => t.stop());
+    await this._startMic(/* aecOff= */ false);
+    this._reconnectMic();
+
+    // Step 4: resume
+    this._startUpdateLoop();
+    onProgress?.({ phase: 'done', value: 1 });
+  }
+
+  // ── Audio file ──────────────────────────────────────────────────────────────
+
   async loadAudioFile(file) {
     if (!this.ctx) return;
-    const arrayBuffer = await file.arrayBuffer();
-    const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+    const ab  = await file.arrayBuffer();
+    const buf = await this.ctx.decodeAudioData(ab);
 
     this.audioSource?.stop();
     this.audioSource = this.ctx.createBufferSource();
-    this.audioSource.buffer = audioBuffer;
-    this.audioSource.loop = true;
+    this.audioSource.buffer = buf;
+    this.audioSource.loop   = true;
     this.audioSource.connect(this.eq.input);
     this.audioSource.start();
+    this.musicPlaying = true;
   }
+
+  stopAudio() {
+    this.audioSource?.stop();
+    this.audioSource  = null;
+    this.musicPlaying = false;
+  }
+
+  // ── Controls ────────────────────────────────────────────────────────────────
 
   setAdaptiveEQ(enabled) {
     this.adaptiveEQEnabled = enabled;
@@ -100,58 +145,114 @@ export class AudioEngine {
     if (this.masterGain) this.masterGain.gain.value = linear;
   }
 
+  // ── Private ──────────────────────────────────────────────────────────────────
+
+  async _startMic(aecOff) {
+    this.micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation:  !aecOff,  // OFF during calibration, ON otherwise
+        noiseSuppression:  false,    // we handle noise ourselves
+        autoGainControl:   false,
+      }
+    });
+  }
+
+  _buildGraph() {
+    this.eq          = new AdaptiveEQ(this.ctx);
+    this.masking     = new MaskingToneGenerator(this.ctx);
+    this.masterGain  = this.ctx.createGain();
+    this.masterGain.gain.value = 1.0;
+
+    // Output reference tap — monitors what we're actually sending to the speakers
+    this.outputAnalyser = this.ctx.createAnalyser();
+    this.outputAnalyser.fftSize = 4096;
+    this.outputAnalyser.smoothingTimeConstant = 0.6;
+
+    this.masking.output.connect(this.masterGain);
+    this.eq.output.connect(this.masterGain);
+    this.masterGain.connect(this.outputAnalyser);
+    this.masterGain.connect(this.ctx.destination);
+
+    // Mic analyser (analysis only — not routed to output)
+    this.analyzer = new FFTAnalyzer(this.ctx, 4096);
+    this._reconnectMic();
+  }
+
+  _reconnectMic() {
+    // Disconnect previous mic source if any
+    try { this._micSource?.disconnect(); } catch (_) {}
+    this._micSource = this.ctx.createMediaStreamSource(this.micStream);
+    this._micSource.connect(this.analyzer.node);
+  }
+
   _startUpdateLoop() {
+    clearInterval(this._updateInterval);
     this._updateInterval = setInterval(() => {
       if (!this.isRunning) return;
 
       this.analyzer.updateNoiseFloor();
-      const spectrum = Array.from(this.analyzer.getSpectrum());
-      const peaks = this.analyzer.findPeaks([50, 3000], 8);
-      const bands = this._classifyNoise(peaks);
 
-      const overall = spectrum.length
-        ? spectrum.reduce((a, b) => a + b, 0) / spectrum.length
-        : -120;
+      // Raw mic spectrum (dB) — calibration-corrected if available
+      let rawSpectrum = Array.from(this.analyzer.getSpectrum());
+      if (this.calibration?.isCalibrated) {
+        rawSpectrum = Array.from(this.calibration.apply(new Float32Array(rawSpectrum)));
+      }
+
+      // Frequency-domain echo subtraction for our own output
+      // Subtracts any energy our app is playing back from the noise estimate
+      const echoSpectrum = new Float32Array(this.outputAnalyser.frequencyBinCount);
+      this.outputAnalyser.getFloatFrequencyData(echoSpectrum);
+      const cleanSpectrum = rawSpectrum.map((db, b) => {
+        const echo = echoSpectrum[b];
+        // Only subtract if our output is meaningful at this bin (> -55 dBFS)
+        // and we're not in music mode (AEC already handles most of that)
+        if (!this.musicPlaying && echo > -55) {
+          // Conservative: reduce by the amount our output exceeds the noise
+          const excess = echo - db;
+          return excess > 0 ? db : db + excess * 0.5;
+        }
+        return db;
+      });
+
+      // Update noise floor with the echo-cancelled spectrum
+      // (temporarily swap the buffer so updateNoiseFloor uses clean data)
+      const tempBuf = this.analyzer.dataBuffer;
+      this.analyzer.dataBuffer = new Float32Array(cleanSpectrum);
+      const peaks = this.analyzer.findPeaks([50, 3000], 8);
+      const bands = this._classifyNoise(peaks, cleanSpectrum);
+      this.analyzer.dataBuffer = tempBuf;
+
+      const overall = cleanSpectrum.reduce((a, b) => a + b, 0) / cleanSpectrum.length;
 
       if (this.adaptiveEQEnabled) this.eq.update(this.analyzer);
-      if (this.maskingEnabled) this.masking.update(peaks.slice(0, 4), overall);
+      if (this.maskingEnabled)    this.masking.update(peaks.slice(0, 4), overall);
 
       this.onMetricsUpdate?.({
-        spectrum,
+        spectrum:  cleanSpectrum,
         peaks,
         bands,
         overallDB: overall,
-        eqGains: this.eq.getGains(),
+        eqGains:   this.eq.getGains(),
+        calibrated: !!this.calibration?.isCalibrated,
+        musicMode:  this.musicPlaying,
       });
     }, 100);
   }
 
-  _classifyNoise(peaks) {
+  _classifyNoise(peaks, spectrum) {
     const bands = [];
 
-    // Engine harmonics: peaks below 300 Hz with harmonic spacing
     const enginePeaks = peaks.filter(p => p.hz < 300);
-    if (enginePeaks.length > 0) {
-      bands.push({ label: '引擎', icon: '🚗', peaks: enginePeaks });
-    }
+    if (enginePeaks.length) bands.push({ label: '引擎', icon: '🚗', peaks: enginePeaks });
 
-    // Broadband road noise 200–1000 Hz
     const roadDB = this.analyzer.bandPower(200, 1000);
-    if (roadDB > -55) {
-      bands.push({ label: '路面/輪胎', icon: '🛞', db: roadDB, type: 'broadband' });
-    }
+    if (roadDB > -55) bands.push({ label: '路面/輪胎', icon: '🛞', db: roadDB, type: 'broadband' });
 
-    // Wind noise 500–2000 Hz
     const windDB = this.analyzer.bandPower(500, 2000);
-    if (windDB > -50) {
-      bands.push({ label: '風噪', icon: '💨', db: windDB, type: 'broadband' });
-    }
+    if (windDB > -50) bands.push({ label: '風噪', icon: '💨', db: windDB, type: 'broadband' });
 
-    // Tonal HVAC/other
     const hvacPeaks = peaks.filter(p => p.hz >= 300 && p.hz < 2000 && p.prominence > 12);
-    if (hvacPeaks.length > 0) {
-      bands.push({ label: 'HVAC / 其他', icon: '🌀', peaks: hvacPeaks });
-    }
+    if (hvacPeaks.length) bands.push({ label: 'HVAC / 其他', icon: '🌀', peaks: hvacPeaks });
 
     return bands;
   }

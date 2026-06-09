@@ -22,23 +22,39 @@
 <div class="status-row">
   <span class="dot dot-gray" id="statusDot"></span>
   <span id="statusText">待機</span>
+  <span class="badges">
+    <span class="badge badge-gray" id="calibBadge">未校正</span>
+    <span class="badge badge-blue" id="musicBadge" style="display:none">音樂模式</span>
+  </span>
   <span id="overallLevel">— dBFS</span>
 </div>
 
 <main>
 
+  <!-- Calibration card -->
+  <div class="card">
+    <div class="card-title">自我校正</div>
+    <div class="controls">
+      <p class="hint">校正會播放 3 秒測試音，讓系統測量麥克風與喇叭的頻率特性及回聲路徑。<br>
+        請在<strong>安靜環境</strong>下執行（不需要關音樂，但建議先靜音）。</p>
+      <button id="calibrateBtn" class="btn-secondary">開始校正（3 秒）</button>
+      <div id="calibProgress" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="calibBar"></div></div>
+        <span class="dim" id="calibStatus">量測中…</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Spectrum -->
   <div class="card">
-    <div class="card-title">即時頻譜</div>
+    <div class="card-title">即時頻譜（回聲消除後）</div>
     <canvas id="spectrumCanvas" width="800" height="90"></canvas>
   </div>
 
   <!-- Noise bands -->
   <div class="card">
     <div class="card-title">偵測到的噪音來源</div>
-    <div id="bandsContainer">
-      <p class="dim">尚未啟動</p>
-    </div>
+    <div id="bandsContainer"><p class="dim">尚未啟動</p></div>
   </div>
 
   <!-- Adaptive EQ -->
@@ -55,12 +71,12 @@
         <input type="checkbox" id="toggleEQ" checked />
       </div>
       <div class="toggle-row">
-        <label for="toggleMasking">遮蔽音調（引擎/HVAC 音調抑制）</label>
+        <label for="toggleMasking">遮蔽音調（車內噪音環境才有效）</label>
         <input type="checkbox" id="toggleMasking" checked />
       </div>
       <label class="file-label">
         <input type="file" id="audioFileInput" accept="audio/*" />
-        載入音樂檔案播放（可選）
+        載入音樂檔案（開啟 AEC 回聲消除）
       </label>
     </div>
   </div>

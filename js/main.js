@@ -1,31 +1,38 @@
 import { AudioEngine } from './AudioEngine.js';
 
 const engine = new AudioEngine();
-let started = false;
+let appState = 'idle'; // idle | calibrating | running
 
 // DOM refs
-const startBtn = document.getElementById('startBtn');
-const statusDot = document.getElementById('statusDot');
-const statusText = document.getElementById('statusText');
-const overallLevel = document.getElementById('overallLevel');
-const spectrumCanvas = document.getElementById('spectrumCanvas');
-const bandsContainer = document.getElementById('bandsContainer');
-const eqContainer = document.getElementById('eqContainer');
-const audioFileInput = document.getElementById('audioFileInput');
-const toggleEQ = document.getElementById('toggleEQ');
-const toggleMasking = document.getElementById('toggleMasking');
+const startBtn        = document.getElementById('startBtn');
+const calibrateBtn    = document.getElementById('calibrateBtn');
+const statusDot       = document.getElementById('statusDot');
+const statusText      = document.getElementById('statusText');
+const overallLevel    = document.getElementById('overallLevel');
+const spectrumCanvas  = document.getElementById('spectrumCanvas');
+const bandsContainer  = document.getElementById('bandsContainer');
+const eqContainer     = document.getElementById('eqContainer');
+const audioFileInput  = document.getElementById('audioFileInput');
+const toggleEQ        = document.getElementById('toggleEQ');
+const toggleMasking   = document.getElementById('toggleMasking');
+const calibBadge      = document.getElementById('calibBadge');
+const calibProgress   = document.getElementById('calibProgress');
+const calibBar        = document.getElementById('calibBar');
+const calibStatus     = document.getElementById('calibStatus');
+const musicBadge      = document.getElementById('musicBadge');
 
 const ctx2d = spectrumCanvas.getContext('2d');
 
 // ── Start / Stop ──────────────────────────────────────────────────────────────
 
 startBtn.addEventListener('click', async () => {
-  if (started) {
+  if (appState === 'running') {
     engine.stop();
-    started = false;
-    setStatus(false);
+    appState = 'idle';
+    setStatus('idle');
     startBtn.textContent = '開始降噪';
-    startBtn.className = 'btn-start';
+    startBtn.className   = 'btn-start';
+    calibrateBtn.disabled = false;
     return;
   }
 
@@ -33,12 +40,13 @@ startBtn.addEventListener('click', async () => {
   startBtn.textContent = '啟動中…';
 
   try {
-    await engine.start();
+    await engine.start('normal');
     engine.onMetricsUpdate = renderMetrics;
-    started = true;
-    setStatus(true);
-    startBtn.textContent = '停止降噪';
-    startBtn.className = 'btn-stop';
+    appState = 'running';
+    setStatus('running');
+    startBtn.textContent  = '停止降噪';
+    startBtn.className    = 'btn-stop';
+    calibrateBtn.disabled = false;
   } catch (e) {
     alert('無法啟動麥克風：' + e.message);
     startBtn.textContent = '開始降噪';
@@ -47,29 +55,86 @@ startBtn.addEventListener('click', async () => {
   }
 });
 
-// ── Audio file ────────────────────────────────────────────────────────────────
+// ── Calibration ───────────────────────────────────────────────────────────────
+
+calibrateBtn.addEventListener('click', async () => {
+  if (appState === 'idle') {
+    // Need to start engine first (without update loop)
+    await engine.start('calibration').catch(e => { alert(e.message); return; });
+  }
+
+  appState = 'calibrating';
+  calibrateBtn.disabled = true;
+  startBtn.disabled     = true;
+  calibProgress.style.display = 'block';
+  setStatus('calibrating');
+
+  try {
+    await engine.calibrate(({ phase, value }) => {
+      calibBar.style.width = Math.round(value * 100) + '%';
+      calibStatus.textContent = phase === 'measuring'
+        ? `量測中… ${Math.round(value * 100)}%`
+        : phase === 'switching'
+        ? '切換至正常模式…'
+        : '校正完成';
+    });
+
+    calibBadge.textContent = '已校正';
+    calibBadge.className   = 'badge badge-green';
+    appState = 'running';
+    engine.onMetricsUpdate = renderMetrics;
+    setStatus('running');
+    startBtn.textContent  = '停止降噪';
+    startBtn.className    = 'btn-stop';
+  } catch (e) {
+    alert('校正失敗：' + e.message);
+    appState = 'idle';
+    setStatus('idle');
+  } finally {
+    calibrateBtn.disabled = false;
+    startBtn.disabled     = false;
+    calibProgress.style.display = 'none';
+  }
+});
+
+// ── Audio file ─────────────────────────────────────────────────────────────────
 
 audioFileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
-  if (!file || !started) return;
+  if (!file) return;
+  if (appState !== 'running') { alert('請先開始降噪再載入音樂'); return; }
   await engine.loadAudioFile(file);
+  musicBadge.style.display = 'inline';
 });
 
-// ── Toggles ───────────────────────────────────────────────────────────────────
+// ── Toggles ────────────────────────────────────────────────────────────────────
 
-toggleEQ.addEventListener('change', () => engine.setAdaptiveEQ(toggleEQ.checked));
+toggleEQ.addEventListener('change',      () => engine.setAdaptiveEQ(toggleEQ.checked));
 toggleMasking.addEventListener('change', () => engine.setMasking(toggleMasking.checked));
 
-// ── Render ────────────────────────────────────────────────────────────────────
+// ── Render ─────────────────────────────────────────────────────────────────────
 
-function setStatus(running) {
-  statusDot.className = running ? 'dot dot-green' : 'dot dot-gray';
-  statusText.textContent = running ? '降噪運行中' : '待機';
+function setStatus(state) {
+  const map = {
+    idle:        { dot: 'dot-gray',   text: '待機' },
+    calibrating: { dot: 'dot-amber',  text: '校正中，請保持安靜…' },
+    running:     { dot: 'dot-green',  text: '降噪運行中' },
+  };
+  const s = map[state] || map.idle;
+  statusDot.className  = 'dot ' + s.dot;
+  statusText.textContent = s.text;
 }
 
-function renderMetrics({ spectrum, peaks, bands, overallDB, eqGains }) {
+function renderMetrics({ spectrum, peaks, bands, overallDB, eqGains, calibrated, musicMode }) {
   overallLevel.textContent = overallDB.toFixed(1) + ' dBFS';
   overallLevel.style.color = overallDB > -30 ? '#ef4444' : overallDB > -50 ? '#f59e0b' : '#22c55e';
+
+  if (calibrated && calibBadge.textContent !== '已校正') {
+    calibBadge.textContent = '已校正';
+    calibBadge.className   = 'badge badge-green';
+  }
+
+  musicBadge.style.display = musicMode ? 'inline' : 'none';
 
   drawSpectrum(spectrum);
   renderBands(bands);
@@ -82,26 +147,24 @@ function drawSpectrum(spectrum) {
   ctx2d.clearRect(0, 0, w, h);
 
   const minDB = -100, maxDB = -10;
-  const step = Math.max(1, Math.floor(spectrum.length / w));
 
   for (let x = 0; x < w; x++) {
     const binIdx = Math.floor((x / w) * spectrum.length);
-    const db = spectrum[binIdx] ?? minDB;
-    const norm = Math.max(0, (db - minDB) / (maxDB - minDB));
-    const barH = norm * h;
-
-    const green = Math.round(norm * 200);
-    const red = Math.round((1 - norm) * 80 + norm * 220);
+    const db     = spectrum[binIdx] ?? minDB;
+    const norm   = Math.max(0, (db - minDB) / (maxDB - minDB));
+    const barH   = norm * h;
+    const red    = Math.round((1 - norm) * 80 + norm * 220);
+    const green  = Math.round(norm * 200);
     ctx2d.fillStyle = `rgb(${red},${green},60)`;
     ctx2d.fillRect(x, h - barH, 1, barH);
   }
 
-  // Frequency axis labels
-  ctx2d.fillStyle = 'rgba(255,255,255,0.4)';
+  // Frequency gridlines
+  ctx2d.fillStyle = 'rgba(255,255,255,0.35)';
   ctx2d.font = '10px sans-serif';
-  const sampleRate = engine.ctx?.sampleRate ?? 44100;
-  [100, 500, 1000, 2000, 4000].forEach(hz => {
-    const x = Math.round((hz / (sampleRate / 2)) * w);
+  const sr = engine.ctx?.sampleRate ?? 44100;
+  [100, 500, 1000, 2000, 4000, 8000].forEach(hz => {
+    const x = Math.round((hz / (sr / 2)) * w);
     ctx2d.fillRect(x, 0, 1, h);
     ctx2d.fillText(hz >= 1000 ? hz / 1000 + 'k' : hz, x + 2, h - 4);
   });
@@ -114,7 +177,7 @@ function renderBands(bands) {
     return;
   }
   bands.forEach(b => {
-    const div = document.createElement('div');
+    const div    = document.createElement('div');
     div.className = 'band-item';
     const detail = b.type === 'broadband'
       ? `${b.db?.toFixed(0)} dB 寬頻`
