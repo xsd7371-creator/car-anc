@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>車內降噪</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🎧 車內主動降噪</h1>
+    <div class="subtitle">分析車內噪音 · 自適應 EQ · 藍芽輸出</div>
+  </div>
+</header>
+
+<div class="status-row">
+  <span class="dot dot-gray" id="statusDot"></span>
+  <span id="statusText">待機</span>
+  <span id="overallLevel">— dBFS</span>
+</div>
+
+<main>
+
+  <!-- Spectrum -->
+  <div class="card">
+    <div class="card-title">即時頻譜</div>
+    <canvas id="spectrumCanvas" width="800" height="90"></canvas>
+  </div>
+
+  <!-- Noise bands -->
+  <div class="card">
+    <div class="card-title">偵測到的噪音來源</div>
+    <div id="bandsContainer">
+      <p class="dim">尚未啟動</p>
+    </div>
+  </div>
+
+  <!-- Adaptive EQ -->
+  <div class="card">
+    <div class="card-title">自適應 EQ 補償增益</div>
+    <div id="eqContainer"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="card">
+    <div class="controls">
+      <div class="toggle-row">
+        <label for="toggleEQ">自適應 EQ（音樂頻率補償）</label>
+        <input type="checkbox" id="toggleEQ" checked />
+      </div>
+      <div class="toggle-row">
+        <label for="toggleMasking">遮蔽音調（引擎/HVAC 音調抑制）</label>
+        <input type="checkbox" id="toggleMasking" checked />
+      </div>
+      <label class="file-label">
+        <input type="file" id="audioFileInput" accept="audio/*" />
+        載入音樂檔案播放（可選）
+      </label>
+    </div>
+  </div>
+
+  <button id="startBtn" class="btn-start">開始降噪</button>
+
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

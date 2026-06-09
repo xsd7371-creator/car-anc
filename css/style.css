@@ -1,0 +1,174 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --border: #334155;
+  --text: #f1f5f9;
+  --dim: #64748b;
+  --blue: #3b82f6;
+  --green: #22c55e;
+  --red: #ef4444;
+  --amber: #f59e0b;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  min-height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+header h1 { font-size: 17px; font-weight: 700; }
+header .subtitle { font-size: 12px; color: var(--dim); margin-top: 2px; }
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot-gray  { background: var(--dim); }
+#statusText { flex: 1; font-size: 13px; }
+#overallLevel { font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
+
+main { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 8px 12px 4px;
+}
+
+/* Spectrum */
+#spectrumCanvas {
+  display: block;
+  width: 100%;
+  height: 90px;
+  background: #020617;
+}
+
+/* Noise bands */
+#bandsContainer { padding: 6px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.band-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.band-icon { font-size: 16px; width: 22px; text-align: center; }
+.band-label { flex: 1; font-weight: 500; }
+.band-detail { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.dim { color: var(--dim); font-size: 13px; padding: 4px 0; }
+
+/* Adaptive EQ */
+#eqContainer {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  padding: 8px 12px 10px;
+  gap: 4px;
+}
+.eq-col { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; }
+.eq-bar-wrap {
+  width: 100%;
+  max-width: 28px;
+  height: 40px;
+  background: #0f172a;
+  border-radius: 3px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+.eq-bar {
+  width: 100%;
+  background: var(--blue);
+  border-radius: 3px 3px 0 0;
+  transition: height .15s ease;
+  min-height: 2px;
+}
+.eq-label { font-size: 9px; color: var(--dim); }
+
+/* Controls */
+.controls { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.toggle-row label { font-size: 13px; }
+
+input[type=checkbox] {
+  appearance: none;
+  width: 40px; height: 24px;
+  background: var(--border);
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: background .2s;
+}
+input[type=checkbox]:checked { background: var(--blue); }
+input[type=checkbox]::after {
+  content: '';
+  position: absolute;
+  width: 18px; height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  top: 3px; left: 3px;
+  transition: transform .2s;
+}
+input[type=checkbox]:checked::after { transform: translateX(16px); }
+
+.file-label {
+  display: block;
+  text-align: center;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--dim);
+  cursor: pointer;
+}
+.file-label:active { background: var(--border); }
+#audioFileInput { display: none; }
+
+/* Start button */
+#startBtn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+#startBtn:disabled { opacity: 0.5; }
+.btn-start { background: var(--blue); color: #fff; }
+.btn-stop  { background: var(--red);  color: #fff; }
