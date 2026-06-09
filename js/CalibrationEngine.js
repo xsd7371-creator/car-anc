@@ -81,6 +81,10 @@ export class CalibrationEngine {
     const prevSmoothing = analyserNode.smoothingTimeConstant;
     analyserNode.smoothingTimeConstant = 0;
 
+    // Snapshot baseline (background noise before sweep starts)
+    this.baselineSpectrum = new Float32Array(this.binCount);
+    analyserNode.getFloatFrequencyData(this.baselineSpectrum);
+
     // Collect mic FFT frames at 80 ms intervals while the sweep plays
     const frames = [];
     const collectId = setInterval(() => {

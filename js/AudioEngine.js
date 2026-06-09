@@ -2,6 +2,7 @@ import { FFTAnalyzer }          from './FFTAnalyzer.js';
 import { AdaptiveEQ }           from './AdaptiveEQ.js';
 import { MaskingToneGenerator } from './MaskingToneGenerator.js';
 import { CalibrationEngine }    from './CalibrationEngine.js';
+import { Verification }         from './Verification.js';
 
 /**
  * Signal graph
@@ -102,9 +103,26 @@ export class AudioEngine {
     await this._startMic(/* aecOff= */ false);
     this._reconnectMic();
 
-    // Step 4: resume
+    // Step 4: evaluate calibration quality using baseline captured before sweep
+    const quality = Verification.calibrationQuality(
+      this.analyzer,
+      this.calibration.baselineSpectrum
+    );
+
+    // Step 5: resume
     this._startUpdateLoop();
-    onProgress?.({ phase: 'done', value: 1 });
+    onProgress?.({ phase: 'done', value: 1, quality });
+  }
+
+  /** Play an audible test tone through the audio output (HomePod / BT). */
+  async playTestTone(hz = 440) {
+    if (!this.ctx) throw new Error('請先開始降噪');
+    await Verification.playTestTone(this.ctx, this.masterGain, hz, 1.5);
+  }
+
+  /** A/B compare: disable processing for `duration` seconds then restore. */
+  async abCompare(duration = 2, onToggle) {
+    await Verification.abCompare(this, duration, onToggle);
   }
 
   // ── Audio file ──────────────────────────────────────────────────────────────

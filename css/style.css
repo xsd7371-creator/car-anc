@@ -191,6 +191,24 @@ input[type=checkbox]:checked::after { transform: translateX(16px); }
 .btn-secondary:active { background: var(--border); }
 .btn-secondary:disabled { opacity: 0.4; }
 
+/* Verification panel */
+.verify-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.verify-row:last-of-type { border-bottom: none; }
+.verify-label { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.verify-label strong { font-size: 13px; }
+.verify-label .hint { font-size: 11px; margin: 0; }
+.btn-sm { padding: 7px 12px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.ab-status {
+  text-align: center; padding: 8px;
+  border-radius: 8px; font-size: 13px; font-weight: 600;
+}
+.ab-off { background: #7c2d12; color: #fca5a5; }
+.ab-on  { background: #14532d; color: #86efac; }
+
 /* Start button */
 #startBtn {
   width: 100%;

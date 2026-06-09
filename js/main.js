@@ -20,6 +20,13 @@ const calibProgress   = document.getElementById('calibProgress');
 const calibBar        = document.getElementById('calibBar');
 const calibStatus     = document.getElementById('calibStatus');
 const musicBadge      = document.getElementById('musicBadge');
+const testToneBtn     = document.getElementById('testToneBtn');
+const abBtn           = document.getElementById('abBtn');
+const abStatus        = document.getElementById('abStatus');
+const calibQualityRow = document.getElementById('calibQualityRow');
+const calibQualityVerdict = document.getElementById('calibQualityVerdict');
+const calibQualityDetail  = document.getElementById('calibQualityDetail');
+const calibQualityBar     = document.getElementById('calibQualityBar');
 
 const ctx2d = spectrumCanvas.getContext('2d');
 
@@ -47,6 +54,8 @@ startBtn.addEventListener('click', async () => {
     startBtn.textContent  = '停止降噪';
     startBtn.className    = 'btn-stop';
     calibrateBtn.disabled = false;
+    testToneBtn.disabled  = false;
+    abBtn.disabled        = false;
   } catch (e) {
     alert('無法啟動麥克風：' + e.message);
     startBtn.textContent = '開始降噪';
@@ -70,22 +79,37 @@ calibrateBtn.addEventListener('click', async () => {
   setStatus('calibrating');
 
   try {
-    await engine.calibrate(({ phase, value }) => {
+    let qualityResult = null;
+    await engine.calibrate(({ phase, value, quality }) => {
       calibBar.style.width = Math.round(value * 100) + '%';
       calibStatus.textContent = phase === 'measuring'
         ? `量測中… ${Math.round(value * 100)}%`
         : phase === 'switching'
         ? '切換至正常模式…'
         : '校正完成';
+      if (quality) qualityResult = quality;
     });
 
     calibBadge.textContent = '已校正';
     calibBadge.className   = 'badge badge-green';
+
+    // Show calibration quality report
+    if (qualityResult) {
+      calibQualityVerdict.textContent = qualityResult.verdict;
+      calibQualityDetail.textContent  = qualityResult.detail;
+      calibQualityBar.style.width     = qualityResult.score + '%';
+      calibQualityBar.style.background = qualityResult.score >= 80
+        ? 'var(--green)' : qualityResult.score >= 40 ? 'var(--amber)' : 'var(--red)';
+      calibQualityRow.style.display = 'block';
+    }
+
     appState = 'running';
     engine.onMetricsUpdate = renderMetrics;
     setStatus('running');
     startBtn.textContent  = '停止降噪';
     startBtn.className    = 'btn-stop';
+    testToneBtn.disabled  = false;
+    abBtn.disabled        = false;
   } catch (e) {
     alert('校正失敗：' + e.message);
     appState = 'idle';
@@ -95,6 +119,43 @@ calibrateBtn.addEventListener('click', async () => {
     startBtn.disabled     = false;
     calibProgress.style.display = 'none';
   }
+});
+
+// ── Test tone ──────────────────────────────────────────────────────────────────
+
+testToneBtn.addEventListener('click', async () => {
+  testToneBtn.disabled = true;
+  testToneBtn.textContent = '播放中…';
+  try {
+    await engine.playTestTone(440);
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    testToneBtn.disabled = false;
+    testToneBtn.textContent = '播放 440 Hz';
+  }
+});
+
+// ── A/B compare ────────────────────────────────────────────────────────────────
+
+abBtn.addEventListener('click', async () => {
+  abBtn.disabled = true;
+  abStatus.style.display = 'block';
+
+  await engine.abCompare(2, (active) => {
+    if (!active) {
+      abStatus.textContent = '⏸ 處理已暫停（聆聽原始聲音）';
+      abStatus.className   = 'ab-status ab-off';
+    } else {
+      abStatus.textContent = '▶ 處理已恢復（聆聽處理後聲音）';
+      abStatus.className   = 'ab-status ab-on';
+    }
+  });
+
+  setTimeout(() => {
+    abStatus.style.display = 'none';
+    abBtn.disabled = false;
+  }, 2000);
 });
 
 // ── Audio file ─────────────────────────────────────────────────────────────────

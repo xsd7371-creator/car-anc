@@ -81,6 +81,43 @@
     </div>
   </div>
 
+  <!-- Verification panel -->
+  <div class="card" id="verifyCard">
+    <div class="card-title">功能驗證</div>
+    <div class="controls">
+
+      <!-- Calibration quality -->
+      <div class="verify-row" id="calibQualityRow" style="display:none">
+        <span id="calibQualityVerdict"></span>
+        <p class="hint" id="calibQualityDetail"></p>
+        <div class="progress-bar">
+          <div class="progress-fill" id="calibQualityBar" style="background: var(--green)"></div>
+        </div>
+      </div>
+
+      <!-- Test tone -->
+      <div class="verify-row">
+        <div class="verify-label">
+          <strong>音訊輸出測試</strong>
+          <span class="hint">確認聲音有送到 HomePod / 藍芽喇叭</span>
+        </div>
+        <button id="testToneBtn" class="btn-secondary btn-sm" disabled>播放 440 Hz</button>
+      </div>
+
+      <!-- A/B compare -->
+      <div class="verify-row">
+        <div class="verify-label">
+          <strong>A/B 比較</strong>
+          <span class="hint">暫停 EQ 處理 2 秒再恢復，用耳朵感受差異</span>
+        </div>
+        <button id="abBtn" class="btn-secondary btn-sm" disabled>A/B 比較</button>
+      </div>
+
+      <div id="abStatus" class="ab-status" style="display:none"></div>
+
+    </div>
+  </div>
+
   <button id="startBtn" class="btn-start">開始降噪</button>
 
 </main>
