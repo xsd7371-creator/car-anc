@@ -291,7 +291,9 @@ export class AudioEngine {
 
       const overall = cleanSpectrum.reduce((a, b) => a + b, 0) / cleanSpectrum.length;
 
-      if (this.adaptiveEQEnabled) this.eq.update(this.analyzer);
+      // Pass cleanSpectrum directly so EQ reads echo-cancelled current levels,
+      // not the raw dataBuffer (which is swapped back to pre-echo-cancel state above).
+      if (this.adaptiveEQEnabled) this.eq.updateFromSpectrum(new Float32Array(cleanSpectrum), this.analyzer);
       if (this.maskingEnabled)    this.masking.update(peaks.slice(0, 4), overall);
 
       this.onMetricsUpdate?.({

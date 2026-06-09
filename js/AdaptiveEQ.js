@@ -4,10 +4,10 @@
  * Strategy: boost bands masked by noise so music emerges above the noise floor.
  */
 export class AdaptiveEQ {
-  // Log-spaced frequencies covering car noise range (80Hz – 5kHz)
   static BANDS = [80, 125, 200, 315, 500, 800, 1250, 2000, 3150, 5000];
   static MAX_BOOST_DB = 8;
-  static NOISE_THRESHOLD_DB = -50; // below this, band is considered quiet → no boost
+  // Noise level above which boosting starts. -65 dBFS catches typical room/YouTube noise.
+  static NOISE_THRESHOLD_DB = -65;
 
   constructor(audioCtx) {
     this.audioCtx = audioCtx;
@@ -15,50 +15,69 @@ export class AdaptiveEQ {
       const f = audioCtx.createBiquadFilter();
       f.type = 'peaking';
       f.frequency.value = freq;
-      f.Q.value = 1.41; // ~1 octave
+      f.Q.value = 1.41;
       f.gain.value = 0;
       return f;
     });
 
-    // Chain filters in series
     for (let i = 0; i < this.filters.length - 1; i++) {
       this.filters[i].connect(this.filters[i + 1]);
     }
 
     this.currentGains = new Array(AdaptiveEQ.BANDS.length).fill(0);
-    this.smoothing = 0.12; // per-update smoothing coefficient
+    this.smoothing = 0.15;
+
+    // Fast-tracking smoothed spectrum used for EQ decisions.
+    // Separate from noiseFloor (which is the long-term minimum used for
+    // spectral subtraction and takes ~30s to rise — too slow for EQ control).
+    this._smoothed = null;
+    this._fastAlpha = 0.7; // 0.7 → reacts in ~3–4 frames (300–400 ms)
   }
 
-  get input() { return this.filters[0]; }
+  get input()  { return this.filters[0]; }
   get output() { return this.filters[this.filters.length - 1]; }
 
-  /**
-   * Update EQ gains based on current FFT noise spectrum.
-   * @param {FFTAnalyzer} analyzer
-   */
+  /** Called from AudioEngine with the echo-cancelled clean spectrum. */
+  updateFromSpectrum(cleanSpectrum, analyzer) {
+    this._ingestFrame(cleanSpectrum, cleanSpectrum.length, analyzer.fftSize);
+  }
+
+  /** Legacy path: read directly from analyzer.dataBuffer. */
   update(analyzer) {
+    this._ingestFrame(analyzer.dataBuffer, analyzer.binCount, analyzer.fftSize);
+  }
+
+  _ingestFrame(frame, binCount, fftSize) {
+    // Initialise or update the fast-smoothed noise estimate
+    if (!this._smoothed || this._smoothed.length !== binCount) {
+      this._smoothed = new Float32Array(frame);
+    } else {
+      for (let b = 0; b < binCount; b++) {
+        this._smoothed[b] = this._fastAlpha * this._smoothed[b]
+                          + (1 - this._fastAlpha) * frame[b];
+      }
+    }
+
     const sampleRate = this.audioCtx.sampleRate;
-    const fftSize = analyzer.fftSize;
 
     AdaptiveEQ.BANDS.forEach((centerHz, i) => {
-      // Sample noise power in ±0.7 octave around band center
       const loBin = Math.max(0, Math.round(((centerHz / 1.63) / sampleRate) * fftSize));
-      const hiBin = Math.min(analyzer.binCount - 1, Math.round(((centerHz * 1.63) / sampleRate) * fftSize));
+      const hiBin = Math.min(binCount - 1,  Math.round(((centerHz * 1.63) / sampleRate) * fftSize));
 
-      let bandNoiseDB = -120;
-      const slice = analyzer.noiseFloor.slice(loBin, hiBin);
-      if (slice.length > 0) {
-        bandNoiseDB = slice.reduce((a, b) => a + b, 0) / slice.length;
+      let bandDB = -120;
+      const len  = hiBin - loBin;
+      if (len > 0) {
+        let sum = 0;
+        for (let b = loBin; b < hiBin; b++) sum += this._smoothed[b];
+        bandDB = sum / len;
       }
 
       let targetGain = 0;
-      if (bandNoiseDB > AdaptiveEQ.NOISE_THRESHOLD_DB) {
-        const excess = bandNoiseDB - AdaptiveEQ.NOISE_THRESHOLD_DB;
-        // Psychoacoustic boost: ~0.35 dB per 1 dB excess noise
+      if (bandDB > AdaptiveEQ.NOISE_THRESHOLD_DB) {
+        const excess = bandDB - AdaptiveEQ.NOISE_THRESHOLD_DB;
         targetGain = Math.min(excess * 0.35, AdaptiveEQ.MAX_BOOST_DB);
       }
 
-      // Exponential smoothing to prevent audible zipper noise
       this.currentGains[i] = this.smoothing * targetGain + (1 - this.smoothing) * this.currentGains[i];
       this.filters[i].gain.value = this.currentGains[i];
     });
@@ -66,6 +85,7 @@ export class AdaptiveEQ {
 
   reset() {
     this.currentGains.fill(0);
+    this._smoothed = null;
     this.filters.forEach(f => { f.gain.value = 0; });
   }
 
