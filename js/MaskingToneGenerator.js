@@ -9,8 +9,12 @@
  * (which BT latency makes impossible for true ANC).
  */
 export class MaskingToneGenerator {
-  static MAX_TONES = 6;
-  static MASKING_LEVEL_DB = -28; // relative to full scale — subtle, not annoying
+  static MAX_TONES = 3;
+  static MASKING_LEVEL_DB = -42; // kept very low; only meaningful in loud car environment
+  // Only activate when overall noise is loud enough (car-level noise ~= above -38 dBFS average)
+  static ACTIVATION_THRESHOLD_DB = -38;
+  // Only track peaks with high prominence — avoids reacting to broadband rain/ambient noise
+  static MIN_PROMINENCE_DB = 18;
 
   constructor(audioCtx) {
     this.audioCtx = audioCtx;
@@ -24,9 +28,19 @@ export class MaskingToneGenerator {
   /**
    * Update active tones to match detected noise peaks.
    * @param {Array<{hz, db, prominence}>} peaks - from FFTAnalyzer.findPeaks()
+   * @param {number} overallDB - average spectrum level; tones suppressed in quiet environments
    */
-  update(peaks) {
-    const targetFreqs = peaks
+  update(peaks, overallDB = -120) {
+    // Silence all tones when environment is too quiet (not a car)
+    if (overallDB < MaskingToneGenerator.ACTIVATION_THRESHOLD_DB) {
+      this._silenceAll();
+      return;
+    }
+
+    // Only use peaks prominent enough to be true tonal noise (not rain/ambient)
+    const qualifiedPeaks = peaks.filter(p => p.prominence >= MaskingToneGenerator.MIN_PROMINENCE_DB);
+
+    const targetFreqs = qualifiedPeaks
       .slice(0, MaskingToneGenerator.MAX_TONES)
       .map(p => p.hz);
 
@@ -59,6 +73,14 @@ export class MaskingToneGenerator {
       gain.gain.setTargetAtTime(1, this.audioCtx.currentTime, 0.2);
       this.tones.push({ osc, gain, hz });
     }
+  }
+
+  _silenceAll() {
+    this.tones = this.tones.filter(t => {
+      t.gain.gain.setTargetAtTime(0, this.audioCtx.currentTime, 0.15);
+      setTimeout(() => { try { t.osc.stop(); } catch (_) {} }, 500);
+      return false;
+    });
   }
 
   setEnabled(enabled) {

@@ -109,12 +109,12 @@ export class AudioEngine {
       const peaks = this.analyzer.findPeaks([50, 3000], 8);
       const bands = this._classifyNoise(peaks);
 
-      if (this.adaptiveEQEnabled) this.eq.update(this.analyzer);
-      if (this.maskingEnabled) this.masking.update(peaks.slice(0, 4));
-
       const overall = spectrum.length
         ? spectrum.reduce((a, b) => a + b, 0) / spectrum.length
         : -120;
+
+      if (this.adaptiveEQEnabled) this.eq.update(this.analyzer);
+      if (this.maskingEnabled) this.masking.update(peaks.slice(0, 4), overall);
 
       this.onMetricsUpdate?.({
         spectrum,
