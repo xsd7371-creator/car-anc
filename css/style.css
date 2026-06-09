@@ -124,6 +124,7 @@ main { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; }
   min-height: 2px;
 }
 .eq-label { font-size: 9px; color: var(--dim); }
+.eq-db    { font-size: 8px; font-variant-numeric: tabular-nums; }
 
 /* Controls */
 .controls { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; }

@@ -266,15 +266,19 @@ function renderBands(bands) {
 function renderEQ(gains) {
   eqContainer.innerHTML = '';
   const max = 8;
-  gains.forEach(({ hz, gain }) => {
+  const threshold = -65;
+  gains.forEach(({ hz, gain, noiseDB }) => {
     const col = document.createElement('div');
     col.className = 'eq-col';
-    const pct = Math.max(0, (gain / max) * 100);
+    const pct      = Math.max(0, (gain / max) * 100);
+    const aboveThresh = noiseDB > threshold;
+    const noiseStr = noiseDB > -119 ? noiseDB.toFixed(0) : '—';
     col.innerHTML = `
       <div class="eq-bar-wrap">
-        <div class="eq-bar" style="height:${pct}%"></div>
+        <div class="eq-bar" style="height:${Math.max(pct, gain > 0.05 ? 4 : 0)}%;background:${aboveThresh ? 'var(--blue)' : 'var(--border)'}"></div>
       </div>
-      <span class="eq-label">${hz >= 1000 ? hz / 1000 + 'k' : hz}</span>`;
+      <span class="eq-label">${hz >= 1000 ? hz / 1000 + 'k' : hz}</span>
+      <span class="eq-db" style="color:${aboveThresh ? 'var(--amber)' : 'var(--dim)'}">${noiseStr}</span>`;
     eqContainer.appendChild(col);
   });
 }

@@ -135,6 +135,17 @@ export class CalibrationEngine {
                                        Math.min( CalibrationEngine.CLIP_DB, c));
     }
 
+    // Only keep correction inside the actual sweep band.
+    // Outside the band the "ideal" is silence (-80 dBFS), so the correction
+    // formula would compute a large NEGATIVE offset that unfairly penalises
+    // mid-frequency noise measurements used by the adaptive EQ.
+    const sr     = this.audioCtx.sampleRate;
+    const loBand = Math.round((CalibrationEngine.F_LOW  / sr) * this.fftSize);
+    const hiBand = Math.round((CalibrationEngine.F_HIGH / sr) * this.fftSize);
+    for (let b = 0; b < this.binCount; b++) {
+      if (b < loBand || b > hiBand) this.correctionDB[b] = 0;
+    }
+
     this.isCalibrated = true;
     onProgress?.(1);
   }

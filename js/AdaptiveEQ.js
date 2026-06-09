@@ -60,6 +60,8 @@ export class AdaptiveEQ {
 
     const sampleRate = this.audioCtx.sampleRate;
 
+    if (!this._bandLevels) this._bandLevels = new Array(AdaptiveEQ.BANDS.length).fill(-120);
+
     AdaptiveEQ.BANDS.forEach((centerHz, i) => {
       const loBin = Math.max(0, Math.round(((centerHz / 1.63) / sampleRate) * fftSize));
       const hiBin = Math.min(binCount - 1,  Math.round(((centerHz * 1.63) / sampleRate) * fftSize));
@@ -71,11 +73,12 @@ export class AdaptiveEQ {
         for (let b = loBin; b < hiBin; b++) sum += this._smoothed[b];
         bandDB = sum / len;
       }
+      this._bandLevels[i] = bandDB;
 
       let targetGain = 0;
       if (bandDB > AdaptiveEQ.NOISE_THRESHOLD_DB) {
         const excess = bandDB - AdaptiveEQ.NOISE_THRESHOLD_DB;
-        targetGain = Math.min(excess * 0.35, AdaptiveEQ.MAX_BOOST_DB);
+        targetGain = Math.min(excess * 0.5, AdaptiveEQ.MAX_BOOST_DB);
       }
 
       this.currentGains[i] = this.smoothing * targetGain + (1 - this.smoothing) * this.currentGains[i];
@@ -85,11 +88,16 @@ export class AdaptiveEQ {
 
   reset() {
     this.currentGains.fill(0);
-    this._smoothed = null;
+    this._smoothed   = null;
+    this._bandLevels = null;
     this.filters.forEach(f => { f.gain.value = 0; });
   }
 
   getGains() {
-    return AdaptiveEQ.BANDS.map((hz, i) => ({ hz, gain: this.currentGains[i] }));
+    return AdaptiveEQ.BANDS.map((hz, i) => ({
+      hz,
+      gain:    this.currentGains[i],
+      noiseDB: this._bandLevels?.[i] ?? -120,
+    }));
   }
 }

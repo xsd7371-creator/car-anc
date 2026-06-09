@@ -1,4 +1,4 @@
-const CACHE = 'car-anc-v3';
+const CACHE = 'car-anc-v4';
 const ASSETS = ['/', '/index.html', '/css/style.css',
   '/js/main.js', '/js/AudioEngine.js', '/js/FFTAnalyzer.js',
   '/js/AdaptiveEQ.js', '/js/MaskingToneGenerator.js',
