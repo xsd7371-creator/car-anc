@@ -158,6 +158,19 @@ abBtn.addEventListener('click', async () => {
   }, 2000);
 });
 
+// ── Pink noise ─────────────────────────────────────────────────────────────────
+
+const togglePink = document.getElementById('togglePink');
+togglePink.addEventListener('change', () => {
+  if (appState !== 'running') {
+    togglePink.checked = false;
+    alert('請先開始降噪');
+    return;
+  }
+  engine.togglePinkNoise(togglePink.checked);
+  musicBadge.style.display = togglePink.checked ? 'inline' : 'none';
+});
+
 // ── Audio file ─────────────────────────────────────────────────────────────────
 
 audioFileInput.addEventListener('change', async (e) => {

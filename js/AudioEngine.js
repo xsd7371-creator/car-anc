@@ -125,6 +125,55 @@ export class AudioEngine {
     await Verification.abCompare(this, duration, onToggle);
   }
 
+  // ── Pink noise generator ────────────────────────────────────────────────────
+
+  /**
+   * Toggle built-in pink noise through the adaptive EQ chain.
+   * Pink noise has equal energy per octave — ideal for hearing EQ changes.
+   */
+  togglePinkNoise(enable) {
+    if (!this.ctx) return;
+
+    if (!enable) {
+      this._pinkSource?.stop();
+      this._pinkSource = null;
+      this.musicPlaying = false;
+      return;
+    }
+
+    // Generate 2-second looping pink noise buffer via Voss-McCartney algorithm
+    const sr     = this.ctx.sampleRate;
+    const frames = sr * 2;
+    const buf    = this.ctx.createBuffer(1, frames, sr);
+    const data   = buf.getChannelData(0);
+
+    // 8-row Voss-McCartney pink noise
+    const rows = new Float32Array(8);
+    let runningSum = 0;
+    for (let i = 0; i < frames; i++) {
+      const rnd = Math.random() * 2 - 1;
+      const bit = i & -i; // lowest set bit — which row to update
+      const row = Math.min(Math.log2(bit), 7);
+      runningSum -= rows[row];
+      rows[row]   = rnd;
+      runningSum += rnd;
+      data[i]     = runningSum / 8;
+    }
+
+    // Normalise to -18 dBFS
+    let peak = 0;
+    for (let i = 0; i < frames; i++) if (Math.abs(data[i]) > peak) peak = Math.abs(data[i]);
+    const target = 0.126; // -18 dBFS
+    for (let i = 0; i < frames; i++) data[i] *= target / (peak || 1);
+
+    this._pinkSource = this.ctx.createBufferSource();
+    this._pinkSource.buffer = buf;
+    this._pinkSource.loop   = true;
+    this._pinkSource.connect(this.eq.input);
+    this._pinkSource.start();
+    this.musicPlaying = true;
+  }
+
   // ── Audio file ──────────────────────────────────────────────────────────────
 
   async loadAudioFile(file) {

@@ -74,6 +74,15 @@
         <label for="toggleMasking">遮蔽音調（車內噪音環境才有效）</label>
         <input type="checkbox" id="toggleMasking" checked />
       </div>
+      <!-- Pink noise for immediate demo without loading a file -->
+      <div class="toggle-row">
+        <div>
+          <label for="togglePink" style="font-size:13px;font-weight:500">粉紅噪音（即時測試 EQ 效果）</label>
+          <p class="hint" style="margin-top:2px">開啟後可立刻聽到 EQ 作動；播放 YouTube 路面噪音時切換，感受差異</p>
+        </div>
+        <input type="checkbox" id="togglePink" />
+      </div>
+
       <label class="file-label">
         <input type="file" id="audioFileInput" accept="audio/*" />
         載入音樂檔案（開啟 AEC 回聲消除）
