@@ -289,7 +289,18 @@ export class AudioEngine {
       const bands = this._classifyNoise(peaks, cleanSpectrum);
       this.analyzer.dataBuffer = tempBuf;
 
-      const overall = cleanSpectrum.reduce((a, b) => a + b, 0) / cleanSpectrum.length;
+      // Compute overall level only across the audible noise range (50–8000 Hz).
+      // Averaging all 2048 bins drags the result toward -120 dBFS because most
+      // high-frequency bins are silent, making the masking threshold unreachable.
+      const sr       = this.ctx.sampleRate;
+      const fftSize  = this.analyzer.fftSize;
+      const loNoise  = Math.round((50   / sr) * fftSize);
+      const hiNoise  = Math.round((8000 / sr) * fftSize);
+      let noiseSum = 0, noiseCount = 0;
+      for (let b = loNoise; b <= hiNoise && b < cleanSpectrum.length; b++) {
+        noiseSum += cleanSpectrum[b]; noiseCount++;
+      }
+      const overall = noiseCount > 0 ? noiseSum / noiseCount : -120;
 
       // Pass cleanSpectrum directly so EQ reads echo-cancelled current levels,
       // not the raw dataBuffer (which is swapped back to pre-echo-cancel state above).

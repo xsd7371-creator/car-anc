@@ -6,8 +6,10 @@
 export class AdaptiveEQ {
   static BANDS = [80, 125, 200, 315, 500, 800, 1250, 2000, 3150, 5000];
   static MAX_BOOST_DB = 8;
-  // Noise level above which boosting starts. -65 dBFS catches typical room/YouTube noise.
-  static NOISE_THRESHOLD_DB = -65;
+  // Noise level above which boosting starts.
+  // From debug display: band levels in quiet room are around -70 to -92 dBFS,
+  // so threshold must be below -70 to trigger. Set to -80 for comfortable margin.
+  static NOISE_THRESHOLD_DB = -80;
 
   constructor(audioCtx) {
     this.audioCtx = audioCtx;
